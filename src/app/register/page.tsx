@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +14,7 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
-    email: "",
+    username: "",
     password: "",
     confirmPassword: "",
   });
@@ -28,31 +27,44 @@ export default function RegisterPage() {
       return;
     }
 
-    if (formData.password.length < 8) {
-      toast.error("Password must be at least 8 characters long");
+    if (formData.password.length < 4) {
+      toast.error("Password must be at least 4 characters long");
       return;
     }
 
     setIsLoading(true);
 
     try {
-      const { error } = await authClient.signUp.email({
-        email: formData.email,
-        name: formData.name,
-        password: formData.password,
+      const res = await fetch("/api/auth/admin/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: formData.name,
+          username: formData.username,
+          password: formData.password,
+        }),
       });
 
-      if (error?.code) {
-        const errorMap: Record<string, string> = {
-          USER_ALREADY_EXISTS: "Email already registered. Please use a different email or login.",
-        };
-        toast.error(errorMap[error.code] || "Registration failed. Please try again.");
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast.error(data.error || "Registration failed. Please try again.");
         return;
+      }
+
+      // Also persist to localStorage for offline fallback login
+      const savedAdmins = JSON.parse(localStorage.getItem("shop_admins") || "[]");
+      const savedPasswords = JSON.parse(localStorage.getItem("shop_admin_passwords") || "{}");
+      if (!savedAdmins.some((a: any) => a.username === formData.username)) {
+        savedAdmins.push({ id: String(data.user.id), username: formData.username, name: formData.name });
+        savedPasswords[formData.username] = formData.password;
+        localStorage.setItem("shop_admins", JSON.stringify(savedAdmins));
+        localStorage.setItem("shop_admin_passwords", JSON.stringify(savedPasswords));
       }
 
       toast.success("Account created successfully! Please log in.");
       router.push("/login?registered=true");
-    } catch (error) {
+    } catch {
       toast.error("An error occurred during registration");
     } finally {
       setIsLoading(false);
@@ -68,7 +80,7 @@ export default function RegisterPage() {
               <Store className="h-8 w-8" />
             </div>
             <h1 className="text-2xl font-bold text-center">SREE SAI DURGA</h1>
-            <p className="text-sm text-muted-foreground text-center mt-1">Create Your Account</p>
+            <p className="text-sm text-muted-foreground text-center mt-1">Create Admin Account</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -77,7 +89,7 @@ export default function RegisterPage() {
               <Input
                 id="name"
                 type="text"
-                placeholder="John Doe"
+                placeholder="Shop Owner / Admin Name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
@@ -86,13 +98,13 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="username">Username</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="your@email.com"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                id="username"
+                type="text"
+                placeholder="Enter username (e.g., ADMIN)"
+                value={formData.username}
+                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                 required
                 disabled={isLoading}
               />
@@ -110,9 +122,6 @@ export default function RegisterPage() {
                 required
                 disabled={isLoading}
               />
-              <p className="text-xs text-muted-foreground">
-                Must be at least 8 characters long
-              </p>
             </div>
 
             <div className="space-y-2">
