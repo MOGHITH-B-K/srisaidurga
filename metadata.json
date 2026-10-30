@@ -1,0 +1,8 @@
+{
+  "name": "SREE SAI DURGA - Shop Billing System",
+  "description": "Comprehensive shop billing, sales and rental management, customer tracking, inventory, and analytics system.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
