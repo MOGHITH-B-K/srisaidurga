@@ -1,9 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Check } from "lucide-react";
+import { Check, Phone, Mail, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+import { Toaster } from "@/components/ui/sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
 const plans = [
   {
@@ -56,8 +60,21 @@ const plans = [
 ];
 
 export default function PricingPage() {
+  const [selectedPlan, setSelectedPlan] = useState<any>(null);
+  const [showContactDialog, setShowContactDialog] = useState(false);
+
+  const handleSelectPlan = (plan: any) => {
+    if (plan.id === "free") {
+      toast.info("You are currently using the Free Plan with unlimited local features enabled.");
+      return;
+    }
+    setSelectedPlan(plan);
+    setShowContactDialog(true);
+  };
+
   return (
     <div className="max-w-7xl mx-auto p-6">
+      <Toaster />
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold mb-4">Choose Your Plan</h1>
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
@@ -89,13 +106,50 @@ export default function PricingPage() {
                   </li>
                 ))}
               </ul>
-              <Button className="w-full mt-6" variant={plan.recommended ? "default" : "outline"}>
-                {plan.id === "free" ? "Current Plan" : "Contact Us"}
+              <Button 
+                onClick={() => handleSelectPlan(plan)}
+                className="w-full mt-6" 
+                variant={plan.recommended ? "default" : "outline"}
+              >
+                {plan.id === "free" ? "Current Active Plan" : "Upgrade to " + plan.name}
               </Button>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      {/* Contact Upgrade Dialog */}
+      <Dialog open={showContactDialog} onOpenChange={setShowContactDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              Upgrade to {selectedPlan?.name}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedPlan?.price} — Get in touch with our support team to activate {selectedPlan?.name}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 my-2 text-sm">
+            <div className="p-4 bg-muted rounded-lg space-y-2">
+              <p className="font-semibold text-foreground">SREE SAI DURGA Billing Support</p>
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Phone className="h-4 w-4 text-primary" />
+                <a href="tel:9790548669" className="hover:underline font-mono">9790548669</a> / <a href="tel:9442378669" className="hover:underline font-mono">9442378669</a>
+              </div>
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Mail className="h-4 w-4 text-primary" />
+                <span>support@sreesaidurga.shop</span>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setShowContactDialog(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader>
