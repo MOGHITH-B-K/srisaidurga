@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,6 +36,22 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     try {
+      // 1. Register with Better-Auth email and password
+      const email = formData.username.includes("@") 
+        ? formData.username 
+        : `${formData.username.toLowerCase()}@shop.local`;
+
+      try {
+        await authClient.signUp.email({
+          email,
+          name: formData.name,
+          password: formData.password,
+        });
+      } catch (betterAuthErr) {
+        console.warn("Better-auth sign-up notice:", betterAuthErr);
+      }
+
+      // 2. Also register in local adminUsers table
       const res = await fetch("/api/auth/admin/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -47,7 +64,7 @@ export default function RegisterPage() {
 
       const data = await res.json();
 
-      if (!res.ok) {
+      if (!res.ok && res.status !== 409) {
         toast.error(data.error || "Registration failed. Please try again.");
         return;
       }
@@ -56,7 +73,7 @@ export default function RegisterPage() {
       const savedAdmins = JSON.parse(localStorage.getItem("shop_admins") || "[]");
       const savedPasswords = JSON.parse(localStorage.getItem("shop_admin_passwords") || "{}");
       if (!savedAdmins.some((a: any) => a.username === formData.username)) {
-        savedAdmins.push({ id: String(data.user.id), username: formData.username, name: formData.name });
+        savedAdmins.push({ id: String(data?.user?.id || Date.now()), username: formData.username, name: formData.name });
         savedPasswords[formData.username] = formData.password;
         localStorage.setItem("shop_admins", JSON.stringify(savedAdmins));
         localStorage.setItem("shop_admin_passwords", JSON.stringify(savedPasswords));
@@ -98,7 +115,7 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="username">Username or Email</Label>
               <Input
                 id="username"
                 type="text"

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Store, Loader2, Sparkles, ShieldCheck } from "lucide-react";
+import { authClient } from "@/lib/auth-client";
 
 export const dynamic = 'force-dynamic';
 
@@ -65,6 +66,21 @@ function LoginForm() {
       const token = `shop_${Date.now()}_${Math.random().toString(36)}`;
       localStorage.setItem("shop_auth_token", token);
       localStorage.setItem("shop_user", admin.username);
+      localStorage.setItem("shop_current_user", JSON.stringify({ id: admin.id || "1", username: admin.username, name: admin.name || admin.username }));
+
+      // Sign into better-auth if configured
+      try {
+        const email = formData.username.includes("@") 
+          ? formData.username 
+          : `${formData.username.toLowerCase()}@shop.local`;
+        await authClient.signIn.email({
+          email,
+          password: formData.password,
+        });
+      } catch (betterAuthLoginErr) {
+        // Log info only, local login still succeeds
+        console.warn("Better-auth session notice:", betterAuthLoginErr);
+      }
 
       toast.success(`Welcome back, ${admin.username}! 🎉`);
       
