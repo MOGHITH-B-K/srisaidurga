@@ -112,39 +112,29 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, rate, productType, category } = body;
+    const { name, productType, category } = body;
 
     // Validate required fields
-    if (!name || name.trim() === '') {
+    if (!name || typeof name !== 'string' || name.trim() === '') {
       return NextResponse.json({ 
         error: "Product name is required",
         code: "MISSING_NAME" 
       }, { status: 400 });
     }
 
-    if (rate === undefined || rate === null) {
+    // Coerce rate gracefully
+    const rawRate = body.rate;
+    const rateNum = typeof rawRate === 'string' ? parseFloat(rawRate) : Number(rawRate);
+    if (rawRate === undefined || rawRate === null || isNaN(rateNum) || rateNum < 0) {
       return NextResponse.json({ 
-        error: "Product rate is required",
-        code: "MISSING_RATE" 
-      }, { status: 400 });
-    }
-
-    if (typeof rate !== 'number' || rate < 0) {
-      return NextResponse.json({ 
-        error: "Rate must be a positive number",
+        error: "Rate must be a valid positive number",
         code: "INVALID_RATE" 
       }, { status: 400 });
     }
 
-    if (!productType) {
-      return NextResponse.json({ 
-        error: "Product type is required",
-        code: "MISSING_PRODUCT_TYPE" 
-      }, { status: 400 });
-    }
-
+    const resolvedProductType = (productType || 'sales').toLowerCase();
     // Validate productType
-    if (productType !== 'sales' && productType !== 'rental') {
+    if (resolvedProductType !== 'sales' && resolvedProductType !== 'rental') {
       return NextResponse.json({ 
         error: "Product type must be 'sales' or 'rental'",
         code: "INVALID_PRODUCT_TYPE" 
@@ -153,15 +143,21 @@ export async function POST(request: NextRequest) {
 
     // Sanitize inputs
     const sanitizedName = name.trim();
-    const sanitizedCategory = category ? category.trim() : null;
+    const sanitizedCategory = category && typeof category === 'string' ? category.trim() : null;
+    const initialStock = Math.max(0, parseInt(body.stockQuantity) || 0);
+    const minStock = Math.max(0, parseInt(body.minStockLevel) || 5);
 
     // Create new product
     const newProduct = await db.insert(products)
       .values({
         name: sanitizedName,
-        rate: rate,
-        productType: productType,
+        rate: rateNum,
+        productType: resolvedProductType,
         category: sanitizedCategory,
+        stockQuantity: initialStock,
+        minStockLevel: minStock,
+        totalSales: 0,
+        totalRentals: 0,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       })
@@ -234,9 +230,14 @@ export async function PUT(request: NextRequest) {
     };
 
     if (name !== undefined) updates.name = name.trim();
-    if (rate !== undefined) updates.rate = rate;
+    if (rate !== undefined) {
+      const parsedRate = typeof rate === 'string' ? parseFloat(rate) : Number(rate);
+      if (!isNaN(parsedRate)) updates.rate = parsedRate;
+    }
     if (productType !== undefined) updates.productType = productType;
     if (category !== undefined) updates.category = category ? category.trim() : null;
+    if (body.stockQuantity !== undefined) updates.stockQuantity = Math.max(0, parseInt(body.stockQuantity) || 0);
+    if (body.minStockLevel !== undefined) updates.minStockLevel = Math.max(0, parseInt(body.minStockLevel) || 5);
 
     // Update product
     const updatedProduct = await db.update(products)

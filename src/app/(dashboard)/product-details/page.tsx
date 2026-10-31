@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { fetchWithCache, dataCache, debounce } from "@/lib/cache-utils";
+import { syncToSupabase } from "@/lib/supabase";
 
 interface Product {
   id: number;
@@ -275,8 +276,14 @@ export default function ProductDetailsPage() {
   };
 
   const handleAdd = useCallback(async () => {
-    if (!formData.name) {
+    if (!formData.name || !formData.name.trim()) {
       toast.error("Please enter product name");
+      return;
+    }
+
+    const rateNum = Number(formData.rate);
+    if (isNaN(rateNum) || rateNum < 0) {
+      toast.error("Please enter a valid rate (0 or higher)");
       return;
     }
 
@@ -285,29 +292,35 @@ export default function ProductDetailsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: formData.name,
-          rate: formData.rate,
-          category: formData.category || undefined,
-          productType: formData.productType,
-          stockQuantity: formData.stockQuantity,
-          minStockLevel: formData.minStockLevel,
+          name: formData.name.trim(),
+          rate: rateNum,
+          category: formData.category ? formData.category.trim() : undefined,
+          productType: formData.productType || "sales",
+          stockQuantity: Math.max(0, parseInt(String(formData.stockQuantity)) || 0),
+          minStockLevel: Math.max(0, parseInt(String(formData.minStockLevel)) || 5),
         })
       });
 
+      const resData = await response.json().catch(() => ({}));
+
       if (response.ok) {
-        toast.success("Product added successfully");
+        toast.success(`Product "${resData.name || formData.name}" added successfully`);
+        
+        // Non-blocking sync to Supabase
+        syncToSupabase('products', resData);
+
         setFormData({ name: "", rate: 0, category: "", productType: "sales", stockQuantity: 0, minStockLevel: 5 });
         setIsAddOpen(false);
         
-        // Invalidate caches
+        // Invalidate caches & refresh
         dataCache.clear('products');
         await loadData();
       } else {
-        throw new Error('Failed to add product');
+        throw new Error(resData.error || 'Failed to add product');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding product:', error);
-      toast.error('Failed to add product');
+      toast.error(error.message || 'Failed to add product. Please check the values.');
     }
   }, [formData, loadData]);
 
