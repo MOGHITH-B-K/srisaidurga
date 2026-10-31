@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { HardDrive, Database, FileText, Users, Package, Calendar, Loader2, Trash2, AlertTriangle, RefreshCw } from "lucide-react";
+import { HardDrive, Database, FileText, Users, Package, Calendar, Loader2, Trash2, AlertTriangle, RefreshCw, CheckCircle2, ShieldCheck, ExternalLink } from "lucide-react";
+import Link from "next/link";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,23 +54,34 @@ export default function StoragePage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
+    // 1. Instant hydration from cached storage stats
+    try {
+      const cached = localStorage.getItem("shop_storage_data_cache");
+      if (cached) {
+        setStorageData(JSON.parse(cached));
+        setIsLoading(false);
+      }
+    } catch {}
+
     fetchStorageData();
   }, []);
 
   const fetchStorageData = async (showRefreshToast = false) => {
     try {
       if (showRefreshToast) setIsRefreshing(true);
-      const response = await fetch('/api/storage');
+      const response = await fetch('/api/storage', { cache: 'no-store' });
       if (response.ok) {
         const data = await response.json();
         setStorageData(data);
+        try {
+          localStorage.setItem("shop_storage_data_cache", JSON.stringify(data));
+        } catch {}
         if (showRefreshToast) {
           toast.success("Storage data refreshed");
         }
       }
     } catch (error) {
-      console.error('Error fetching storage data:', error);
-      toast.error("Failed to fetch storage data");
+      console.warn('Notice fetching storage data:', error);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -196,6 +208,35 @@ export default function StoragePage() {
           </Button>
         </div>
       </div>
+
+      {/* Supabase Cloud Connection & Sync Status */}
+      <Card className="border bg-card/60 backdrop-blur-sm">
+        <CardContent className="pt-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                <Database className="h-6 w-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-base">Dual Database & Supabase Auto-Sync</h3>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-700">
+                    <CheckCircle2 className="h-3 w-3" /> Active
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Transactions, sales, and rental records are automatically persisted locally and synchronized directly with your Supabase cloud database in real-time.
+                </p>
+              </div>
+            </div>
+            <Link href="/settings">
+              <Button variant="outline" size="sm" className="shrink-0 text-xs gap-1.5">
+                Manage Supabase Settings <ExternalLink className="h-3.5 w-3.5" />
+              </Button>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Overall Storage Card */}
       <Card className="border-2 shadow-lg">

@@ -125,25 +125,43 @@ function PreviousRecordsContent() {
   }, [isAuthenticated, searchParams]);
 
   const fetchBills = async () => {
+    // 1. Instant hydration from local cache if present
+    try {
+      const cachedSales = localStorage.getItem("shop_cached_sales_bills");
+      if (cachedSales) setSalesBills(JSON.parse(cachedSales));
+      const cachedRentals = localStorage.getItem("shop_cached_rental_bills");
+      if (cachedRentals) setRentalBills(JSON.parse(cachedRentals));
+    } catch {}
+
     setLoadingData(true);
     try {
-      const [salesRes, rentalRes] = await Promise.all([
-        fetch('/api/sales-bills?limit=1000'),
-        fetch('/api/rental-bills?limit=1000')
+      // 2. Fetch fresh bills from database
+      const [salesRes, rentalRes] = await Promise.allSettled([
+        fetch('/api/sales-bills?limit=1000', { cache: 'no-store' }),
+        fetch('/api/rental-bills?limit=1000', { cache: 'no-store' })
       ]);
 
-      if (salesRes.ok) {
-        const salesData = await salesRes.json();
-        setSalesBills(salesData);
+      if (salesRes.status === 'fulfilled' && salesRes.value.ok) {
+        const salesData = await salesRes.value.json();
+        if (Array.isArray(salesData)) {
+          setSalesBills(salesData);
+          try {
+            localStorage.setItem("shop_cached_sales_bills", JSON.stringify(salesData));
+          } catch {}
+        }
       }
 
-      if (rentalRes.ok) {
-        const rentalData = await rentalRes.json();
-        setRentalBills(rentalData);
+      if (rentalRes.status === 'fulfilled' && rentalRes.value.ok) {
+        const rentalData = await rentalRes.value.json();
+        if (Array.isArray(rentalData)) {
+          setRentalBills(rentalData);
+          try {
+            localStorage.setItem("shop_cached_rental_bills", JSON.stringify(rentalData));
+          } catch {}
+        }
       }
     } catch (error) {
-      console.error('Error fetching bills:', error);
-      toast.error('Failed to load bills');
+      console.warn('Network notice while fetching bills:', error);
     } finally {
       setLoadingData(false);
     }

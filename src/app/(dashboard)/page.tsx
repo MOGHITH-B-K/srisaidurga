@@ -56,32 +56,71 @@ export default function DashboardPage() {
     setIsLoading(false);
   }, [router]);
 
-  // Load data once
+  // Load data with graceful fallback to local storage
   useEffect(() => {
     if (!isAuthenticated) return;
     
+    let isCancelled = false;
+
     const loadData = async () => {
+      let salesData: any[] = [];
+      let rentalData: any[] = [];
+
+      // 1. Fetch Sales Bills
       try {
-        const [salesRes, rentalRes] = await Promise.all([
-          fetch('/api/sales-bills'),
-          fetch('/api/rental-bills')
-        ]);
+        const salesRes = await fetch('/api/sales-bills', {
+          headers: { 'Accept': 'application/json' },
+          cache: 'no-store'
+        });
+        if (salesRes.ok) {
+          const json = await salesRes.json();
+          salesData = Array.isArray(json) ? json : [];
+          // Save to local cache as backup
+          try {
+            localStorage.setItem("shop_cached_sales_bills", JSON.stringify(salesData));
+          } catch {}
+        }
+      } catch (err) {
+        console.warn('Network fetch for sales-bills bypassed, loading cache:', err);
+        try {
+          const cached = localStorage.getItem("shop_cached_sales_bills") || localStorage.getItem("shop_sales_bills");
+          if (cached) salesData = JSON.parse(cached);
+        } catch {}
+      }
 
-        const [sales, rentals] = await Promise.all([
-          salesRes.ok ? salesRes.json() : [],
-          rentalRes.ok ? rentalRes.json() : []
-        ]);
+      // 2. Fetch Rental Bills
+      try {
+        const rentalRes = await fetch('/api/rental-bills', {
+          headers: { 'Accept': 'application/json' },
+          cache: 'no-store'
+        });
+        if (rentalRes.ok) {
+          const json = await rentalRes.json();
+          rentalData = Array.isArray(json) ? json : [];
+          // Save to local cache as backup
+          try {
+            localStorage.setItem("shop_cached_rental_bills", JSON.stringify(rentalData));
+          } catch {}
+        }
+      } catch (err) {
+        console.warn('Network fetch for rental-bills bypassed, loading cache:', err);
+        try {
+          const cached = localStorage.getItem("shop_cached_rental_bills") || localStorage.getItem("shop_rental_bills");
+          if (cached) rentalData = JSON.parse(cached);
+        } catch {}
+      }
 
-        setSalesBills(sales);
-        setRentalBills(rentals);
-      } catch (error) {
-        console.error('Error loading dashboard data:', error);
-        setSalesBills([]);
-        setRentalBills([]);
+      if (!isCancelled) {
+        setSalesBills(Array.isArray(salesData) ? salesData : []);
+        setRentalBills(Array.isArray(rentalData) ? rentalData : []);
       }
     };
 
     loadData();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [isAuthenticated]);
 
   // Memoize stats calculation

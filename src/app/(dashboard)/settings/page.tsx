@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Globe, UserPlus, Palette, Upload, Store, CreditCard, Save, Trash2, Image as ImageIcon } from "lucide-react";
+import { Globe, UserPlus, Palette, Upload, Store, CreditCard, Save, Trash2, Image as ImageIcon, Database, CheckCircle2, AlertCircle, RefreshCw, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { useTheme } from "next-themes";
@@ -45,6 +45,17 @@ export default function SettingsPage() {
   const [logoPreview, setLogoPreview] = useState("");
   const [qrPreview, setQrPreview] = useState("");
 
+  // Supabase Database Connection State
+  const [supabaseConfig, setSupabaseConfig] = useState({
+    url: "",
+    anonKey: "",
+    dbPassword: "",
+    connected: false,
+    lastTested: "",
+  });
+  const [isTestingSupabase, setIsTestingSupabase] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
   useEffect(() => {
     setMounted(true);
     // Load settings from localStorage
@@ -57,6 +68,24 @@ export default function SettingsPage() {
       setShopProfile(profile);
       setLogoPreview(profile.logo || "");
       setQrPreview(profile.paymentQRCode || "");
+    }
+
+    // Load Supabase configuration
+    const savedSupabaseUrl = localStorage.getItem("shop_supabase_url") || "";
+    const savedSupabaseKey = localStorage.getItem("shop_supabase_key") || "";
+    const savedSupabaseTested = localStorage.getItem("shop_supabase_tested") || "";
+    const savedSupabaseConnected = localStorage.getItem("shop_supabase_connected") === "true";
+    if (savedSupabaseUrl || savedSupabaseKey) {
+      setSupabaseConfig({
+        url: savedSupabaseUrl,
+        anonKey: savedSupabaseKey,
+        dbPassword: "",
+        connected: savedSupabaseConnected,
+        lastTested: savedSupabaseTested,
+      });
+      if (savedSupabaseConnected) {
+        setTestResult({ success: true, message: "Connected to Supabase Project" });
+      }
     }
 
     const savedAdmins = localStorage.getItem("shop_admins");
@@ -234,6 +263,90 @@ export default function SettingsPage() {
     toast.success("Payment QR code removed");
   };
 
+  const handleTestSupabase = async () => {
+    if (!supabaseConfig.url.trim() || !supabaseConfig.anonKey.trim()) {
+      toast.error("Please enter both Supabase Project URL and API Key");
+      return;
+    }
+
+    setIsTestingSupabase(true);
+    setTestResult(null);
+
+    try {
+      const res = await fetch("/api/supabase/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          supabaseUrl: supabaseConfig.url.trim(),
+          supabaseAnonKey: supabaseConfig.anonKey.trim(),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        const now = new Date().toLocaleString();
+        setSupabaseConfig(prev => ({
+          ...prev,
+          connected: true,
+          lastTested: now,
+        }));
+        setTestResult({
+          success: true,
+          message: "Connection verified! Supabase is accessible.",
+        });
+        localStorage.setItem("shop_supabase_url", supabaseConfig.url.trim());
+        localStorage.setItem("shop_supabase_key", supabaseConfig.anonKey.trim());
+        localStorage.setItem("shop_supabase_connected", "true");
+        localStorage.setItem("shop_supabase_tested", now);
+        toast.success("Supabase connection verified and saved!");
+      } else {
+        setSupabaseConfig(prev => ({ ...prev, connected: false }));
+        setTestResult({
+          success: false,
+          message: data.error || "Failed to connect to Supabase project.",
+        });
+        localStorage.setItem("shop_supabase_connected", "false");
+        toast.error(data.error || "Connection test failed");
+      }
+    } catch (err: any) {
+      setSupabaseConfig(prev => ({ ...prev, connected: false }));
+      setTestResult({
+        success: false,
+        message: err.message || "Network error while connecting to Supabase.",
+      });
+      toast.error("Network error during connection test");
+    } finally {
+      setIsTestingSupabase(false);
+    }
+  };
+
+  const handleSaveSupabase = () => {
+    if (!supabaseConfig.url.trim() || !supabaseConfig.anonKey.trim()) {
+      toast.error("Please provide both Supabase URL and API Key");
+      return;
+    }
+    localStorage.setItem("shop_supabase_url", supabaseConfig.url.trim());
+    localStorage.setItem("shop_supabase_key", supabaseConfig.anonKey.trim());
+    toast.success("Supabase settings saved successfully");
+  };
+
+  const handleDisconnectSupabase = () => {
+    localStorage.removeItem("shop_supabase_url");
+    localStorage.removeItem("shop_supabase_key");
+    localStorage.removeItem("shop_supabase_connected");
+    localStorage.removeItem("shop_supabase_tested");
+    setSupabaseConfig({
+      url: "",
+      anonKey: "",
+      dbPassword: "",
+      connected: false,
+      lastTested: "",
+    });
+    setTestResult(null);
+    toast.success("Disconnected from Supabase");
+  };
+
   if (!mounted) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -251,7 +364,7 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="general" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="general">
                 <Globe className="h-4 w-4 mr-2" />
                 General
@@ -271,6 +384,10 @@ export default function SettingsPage() {
               <TabsTrigger value="payment">
                 <CreditCard className="h-4 w-4 mr-2" />
                 Payment
+              </TabsTrigger>
+              <TabsTrigger value="database">
+                <Database className="h-4 w-4 mr-2" />
+                Supabase
               </TabsTrigger>
             </TabsList>
 
@@ -541,6 +658,164 @@ export default function SettingsPage() {
                       <strong>Note:</strong> This QR code will automatically appear in the top corner of all printed bills. 
                       You can change it anytime from this page.
                     </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Supabase Database Connection */}
+            <TabsContent value="database" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-xl flex items-center gap-2">
+                        <Database className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                        Supabase Database Connection
+                      </CardTitle>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Connect your SREE SAI DURGA shop app to a Supabase project for cloud synchronization and persistent storage.
+                      </p>
+                    </div>
+                    {supabaseConfig.connected ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Connected
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                        <AlertCircle className="h-3.5 w-3.5 text-amber-600" /> Local Database Active
+                      </span>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Status Banner */}
+                  {testResult && (
+                    <div className={`p-4 rounded-lg flex items-start gap-3 border ${
+                      testResult.success
+                        ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800"
+                        : "bg-red-50 dark:bg-red-950/40 text-red-900 dark:text-red-200 border-red-200 dark:border-red-800"
+                    }`}>
+                      {testResult.success ? (
+                        <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+                      )}
+                      <div>
+                        <p className="text-sm font-semibold">
+                          {testResult.success ? "Connection Successful" : "Connection Error"}
+                        </p>
+                        <p className="text-xs mt-0.5 opacity-90">{testResult.message}</p>
+                        {supabaseConfig.lastTested && (
+                          <p className="text-[11px] mt-1 text-muted-foreground">
+                            Last checked: {supabaseConfig.lastTested}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Connection Form */}
+                  <div className="grid gap-4">
+                    <div>
+                      <Label htmlFor="supabase-url">
+                        Supabase Project URL <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        id="supabase-url"
+                        placeholder="https://xyzcompany.supabase.co"
+                        value={supabaseConfig.url}
+                        onChange={(e) =>
+                          setSupabaseConfig(prev => ({ ...prev, url: e.target.value }))
+                        }
+                        className="mt-1 font-mono text-sm"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Found in your Supabase Dashboard under <strong>Project Settings ➔ API ➔ Project URL</strong>.
+                      </p>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="supabase-key">
+                        Supabase Anon / Public API Key <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        id="supabase-key"
+                        type="password"
+                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                        value={supabaseConfig.anonKey}
+                        onChange={(e) =>
+                          setSupabaseConfig(prev => ({ ...prev, anonKey: e.target.value }))
+                        }
+                        className="mt-1 font-mono text-sm"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Found in your Supabase Dashboard under <strong>Project Settings ➔ API ➔ Project API keys (anon / public)</strong>.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex flex-wrap items-center gap-3 pt-2">
+                    <Button
+                      onClick={handleTestSupabase}
+                      disabled={isTestingSupabase}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      {isTestingSupabase ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Testing Connection...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="h-4 w-4 mr-2" />
+                          Test & Connect Supabase
+                        </>
+                      )}
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      onClick={handleSaveSupabase}
+                      disabled={isTestingSupabase}
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      Save Credentials
+                    </Button>
+
+                    {supabaseConfig.connected && (
+                      <Button
+                        variant="destructive"
+                        onClick={handleDisconnectSupabase}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Disconnect
+                      </Button>
+                    )}
+
+                    <a
+                      href="https://supabase.com/dashboard"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-auto inline-flex items-center text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Open Supabase Console <ExternalLink className="h-3 w-3 ml-1" />
+                    </a>
+                  </div>
+
+                  {/* Supabase Quick Guide */}
+                  <div className="border rounded-lg p-4 bg-muted/40 space-y-2 text-xs">
+                    <div className="font-semibold text-foreground flex items-center gap-1.5">
+                      <Store className="h-3.5 w-3.5 text-primary" /> How to connect your Supabase Project:
+                    </div>
+                    <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                      <li>Log in to your <strong>Supabase.com Dashboard</strong> and open or create a project.</li>
+                      <li>Go to <strong>Project Settings</strong> (gear icon) ➔ <strong>API</strong>.</li>
+                      <li>Copy the <strong>Project URL</strong> and paste it into the field above.</li>
+                      <li>Copy the <strong>anon / public key</strong> and paste it above.</li>
+                      <li>Click <strong>Test & Connect Supabase</strong> to verify the connection.</li>
+                    </ol>
                   </div>
                 </CardContent>
               </Card>

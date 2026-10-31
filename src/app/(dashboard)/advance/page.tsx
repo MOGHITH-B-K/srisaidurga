@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Edit, Search, CheckCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
+import { syncToSupabase } from "@/lib/supabase";
 
 interface BillItem {
   itemName: string;
@@ -69,31 +70,47 @@ export default function AdvancePage() {
   }>({ open: false, type: 'sales', bill: null });
 
   useEffect(() => {
+    // 1. Instant hydration from cached bills
+    try {
+      const cachedSales = localStorage.getItem("shop_cached_sales_bills");
+      if (cachedSales) {
+        const parsed = JSON.parse(cachedSales);
+        setSalesBills(parsed.filter((b: SalesBill) => !b.isPaid && b.advanceAmount > 0));
+        setLoading(false);
+      }
+      const cachedRentals = localStorage.getItem("shop_cached_rental_bills");
+      if (cachedRentals) {
+        const parsed = JSON.parse(cachedRentals);
+        setRentalBills(parsed.filter((b: RentalBill) => !b.isPaid && b.advanceAmount > 0));
+        setLoading(false);
+      }
+    } catch {}
+
     loadBills();
   }, []);
 
   const loadBills = async () => {
-    setLoading(true);
     try {
-      const [salesRes, rentalRes] = await Promise.all([
-        fetch('/api/sales-bills?isPaid=false&limit=1000'),
-        fetch('/api/rental-bills?isPaid=false&limit=1000')
+      const [salesRes, rentalRes] = await Promise.allSettled([
+        fetch('/api/sales-bills?isPaid=false&limit=1000', { cache: 'no-store' }),
+        fetch('/api/rental-bills?isPaid=false&limit=1000', { cache: 'no-store' })
       ]);
 
-      if (salesRes.ok) {
-        const salesData = await salesRes.json();
-        // Filter for advance only (has advance amount)
-        setSalesBills(salesData.filter((bill: SalesBill) => bill.advanceAmount > 0));
+      if (salesRes.status === 'fulfilled' && salesRes.value.ok) {
+        const salesData = await salesRes.value.json();
+        if (Array.isArray(salesData)) {
+          setSalesBills(salesData.filter((bill: SalesBill) => bill.advanceAmount > 0));
+        }
       }
 
-      if (rentalRes.ok) {
-        const rentalData = await rentalRes.json();
-        // Filter for advance only (has advance amount)
-        setRentalBills(rentalData.filter((bill: RentalBill) => bill.advanceAmount > 0));
+      if (rentalRes.status === 'fulfilled' && rentalRes.value.ok) {
+        const rentalData = await rentalRes.value.json();
+        if (Array.isArray(rentalData)) {
+          setRentalBills(rentalData.filter((bill: RentalBill) => bill.advanceAmount > 0));
+        }
       }
     } catch (error) {
-      console.error('Error fetching bills:', error);
-      toast.error('Failed to load bills');
+      console.warn('Notice while fetching advance bills:', error);
     } finally {
       setLoading(false);
     }
@@ -126,6 +143,19 @@ export default function AdvancePage() {
       });
 
       if (response.ok) {
+        const updatedBill = await response.json();
+
+        // Fast sync to Supabase in background
+        syncToSupabase(editDialog.type === 'sales' ? 'sales_bills' : 'rental_bills', updatedBill);
+
+        // Update local cache
+        try {
+          const cacheKey = editDialog.type === 'sales' ? "shop_cached_sales_bills" : "shop_cached_rental_bills";
+          const cached = JSON.parse(localStorage.getItem(cacheKey) || "[]");
+          const updated = cached.map((b: any) => b.id === updatedBill.id ? updatedBill : b);
+          localStorage.setItem(cacheKey, JSON.stringify(updated));
+        } catch {}
+
         toast.success(`${editDialog.type === 'sales' ? 'Sales' : 'Rental'} Bill #${editDialog.bill.serialNo} marked as fully paid!`);
         setEditDialog({ open: false, type: 'sales', bill: null });
         loadBills();

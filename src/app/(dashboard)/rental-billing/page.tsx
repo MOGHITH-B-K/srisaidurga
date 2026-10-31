@@ -15,6 +15,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { syncToSupabase } from "@/lib/supabase";
 
 interface BillItem {
   itemName: string;
@@ -453,6 +454,15 @@ function RentalBillingContent() {
 
       const savedBill = await response.json();
       setSavedBillId(savedBill.id);
+
+      // Fast non-blocking sync to Supabase and local cache
+      syncToSupabase('rental_bills', savedBill);
+      try {
+        const cached = JSON.parse(localStorage.getItem("shop_cached_rental_bills") || "[]");
+        const updated = [savedBill, ...cached.filter((b: any) => b.id !== savedBill.id)];
+        localStorage.setItem("shop_cached_rental_bills", JSON.stringify(updated));
+      } catch {}
+
       toast.success(`Rental Bill #${savedBill.serialNo} ${editingBillId ? 'updated' : 'saved'} successfully!`);
       
       if (editingBillId) {

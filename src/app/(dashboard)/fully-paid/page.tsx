@@ -59,29 +59,47 @@ export default function FullyPaidPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // 1. Instant hydration from cached bills
+    try {
+      const cachedSales = localStorage.getItem("shop_cached_sales_bills");
+      if (cachedSales) {
+        const parsed = JSON.parse(cachedSales);
+        setSalesBills(parsed.filter((b: SalesBill) => b.isPaid));
+        setLoading(false);
+      }
+      const cachedRentals = localStorage.getItem("shop_cached_rental_bills");
+      if (cachedRentals) {
+        const parsed = JSON.parse(cachedRentals);
+        setRentalBills(parsed.filter((b: RentalBill) => b.isPaid));
+        setLoading(false);
+      }
+    } catch {}
+
     loadBills();
   }, []);
 
   const loadBills = async () => {
-    setLoading(true);
     try {
-      const [salesRes, rentalRes] = await Promise.all([
-        fetch('/api/sales-bills?isPaid=true&limit=1000'),
-        fetch('/api/rental-bills?isPaid=true&limit=1000')
+      const [salesRes, rentalRes] = await Promise.allSettled([
+        fetch('/api/sales-bills?isPaid=true&limit=1000', { cache: 'no-store' }),
+        fetch('/api/rental-bills?isPaid=true&limit=1000', { cache: 'no-store' })
       ]);
 
-      if (salesRes.ok) {
-        const salesData = await salesRes.json();
-        setSalesBills(salesData);
+      if (salesRes.status === 'fulfilled' && salesRes.value.ok) {
+        const salesData = await salesRes.value.json();
+        if (Array.isArray(salesData)) {
+          setSalesBills(salesData);
+        }
       }
 
-      if (rentalRes.ok) {
-        const rentalData = await rentalRes.json();
-        setRentalBills(rentalData);
+      if (rentalRes.status === 'fulfilled' && rentalRes.value.ok) {
+        const rentalData = await rentalRes.value.json();
+        if (Array.isArray(rentalData)) {
+          setRentalBills(rentalData);
+        }
       }
     } catch (error) {
-      console.error('Error fetching bills:', error);
-      toast.error('Failed to load bills');
+      console.warn('Notice while fetching fully paid bills:', error);
     } finally {
       setLoading(false);
     }
