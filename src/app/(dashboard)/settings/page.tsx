@@ -10,10 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Globe, UserPlus, Palette, Upload, Store, CreditCard, Save, Trash2, Image as ImageIcon, Database, CheckCircle2, AlertCircle, RefreshCw, ExternalLink } from "lucide-react";
+import { Globe, UserPlus, Palette, Upload, Store, CreditCard, Save, Trash2, Image as ImageIcon, Database, CheckCircle2, AlertCircle, RefreshCw, ExternalLink, Copy, Check, Code, ArrowUpRight, CloudUpload } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { useTheme } from "next-themes";
+import { SUPABASE_SQL_SCHEMA } from "@/lib/supabase";
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
@@ -321,6 +322,38 @@ export default function SettingsPage() {
     }
   };
 
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
+
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(SUPABASE_SQL_SCHEMA);
+    setCopiedSql(true);
+    toast.success("SQL script copied! Paste it in your Supabase SQL Editor.");
+    setTimeout(() => setCopiedSql(false), 3000);
+  };
+
+  const handleBulkSyncToSupabase = async () => {
+    if (!supabaseConfig.url.trim() || !supabaseConfig.anonKey.trim()) {
+      toast.error("Please configure and connect Supabase first");
+      return;
+    }
+
+    setIsSyncingAll(true);
+    try {
+      const res = await fetch(`/api/supabase/sync?url=${encodeURIComponent(supabaseConfig.url.trim())}&key=${encodeURIComponent(supabaseConfig.anonKey.trim())}`);
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success("All existing bills, products, customers, and bookings synced to Supabase!");
+      } else {
+        toast.error(data.error || "Failed to push records to Supabase");
+      }
+    } catch (e: any) {
+      toast.error("Sync error: " + (e.message || "Failed to connect"));
+    } finally {
+      setIsSyncingAll(false);
+    }
+  };
+
   const handleSaveSupabase = () => {
     if (!supabaseConfig.url.trim() || !supabaseConfig.anonKey.trim()) {
       toast.error("Please provide both Supabase URL and API Key");
@@ -328,7 +361,9 @@ export default function SettingsPage() {
     }
     localStorage.setItem("shop_supabase_url", supabaseConfig.url.trim());
     localStorage.setItem("shop_supabase_key", supabaseConfig.anonKey.trim());
-    toast.success("Supabase settings saved successfully");
+    localStorage.setItem("shop_supabase_connected", "true");
+    setSupabaseConfig(prev => ({ ...prev, connected: true }));
+    toast.success("Supabase settings saved! New bills will auto-sync.");
   };
 
   const handleDisconnectSupabase = () => {
@@ -784,6 +819,25 @@ export default function SettingsPage() {
                       Save Credentials
                     </Button>
 
+                    <Button
+                      variant="outline"
+                      onClick={handleBulkSyncToSupabase}
+                      disabled={isSyncingAll || !supabaseConfig.connected}
+                      className="border-emerald-600/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10"
+                    >
+                      {isSyncingAll ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Syncing All Records...
+                        </>
+                      ) : (
+                        <>
+                          <CloudUpload className="h-4 w-4 mr-2" />
+                          Sync All Existing Records to Supabase
+                        </>
+                      )}
+                    </Button>
+
                     {supabaseConfig.connected && (
                       <Button
                         variant="destructive"
@@ -804,6 +858,41 @@ export default function SettingsPage() {
                     </a>
                   </div>
 
+                  {/* Supabase Table Setup Helper */}
+                  <div className="border border-emerald-500/30 rounded-lg p-4 bg-emerald-500/5 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Code className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                        <h4 className="font-semibold text-sm">Supabase Database Tables Setup (1-Click SQL)</h4>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={handleCopySql}
+                        className="text-xs gap-1.5 h-8 bg-emerald-600 hover:bg-emerald-700 text-white"
+                      >
+                        {copiedSql ? (
+                          <>
+                            <Check className="h-3.5 w-3.5" /> Copied!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3.5 w-3.5" /> Copy SQL Script
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      For data to save into Supabase, your Supabase project must have the tables created (<code className="font-mono bg-muted px-1 py-0.5 rounded">sales_bills</code>, <code className="font-mono bg-muted px-1 py-0.5 rounded">rental_bills</code>, <code className="font-mono bg-muted px-1 py-0.5 rounded">products</code>, <code className="font-mono bg-muted px-1 py-0.5 rounded">customers</code>, <code className="font-mono bg-muted px-1 py-0.5 rounded">bookings</code>).
+                    </p>
+                    <div className="p-3 bg-background/80 rounded border font-mono text-[11px] text-muted-foreground overflow-x-auto max-h-32">
+                      <pre>{SUPABASE_SQL_SCHEMA}</pre>
+                    </div>
+                    <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                      <strong>Instructions:</strong> Open your <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer" className="underline font-semibold">Supabase Dashboard</a> ➔ Click <strong>SQL Editor</strong> on the left ➔ Click <strong>New Query</strong> ➔ Paste the script ➔ Click <strong>Run</strong>.
+                    </p>
+                  </div>
+
                   {/* Supabase Quick Guide */}
                   <div className="border rounded-lg p-4 bg-muted/40 space-y-2 text-xs">
                     <div className="font-semibold text-foreground flex items-center gap-1.5">
@@ -814,7 +903,8 @@ export default function SettingsPage() {
                       <li>Go to <strong>Project Settings</strong> (gear icon) ➔ <strong>API</strong>.</li>
                       <li>Copy the <strong>Project URL</strong> and paste it into the field above.</li>
                       <li>Copy the <strong>anon / public key</strong> and paste it above.</li>
-                      <li>Click <strong>Test & Connect Supabase</strong> to verify the connection.</li>
+                      <li>Click <strong>Test & Connect Supabase</strong>.</li>
+                      <li>Click <strong>Copy SQL Script</strong>, run it once in your Supabase <strong>SQL Editor</strong>, and your bills will save directly into Supabase!</li>
                     </ol>
                   </div>
                 </CardContent>
